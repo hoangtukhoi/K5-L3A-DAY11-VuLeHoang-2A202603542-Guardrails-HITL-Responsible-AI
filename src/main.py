@@ -26,6 +26,13 @@ if str(_SRC_DIR) not in sys.path:
 
 from core.config import setup_api_key
 
+# Console Windows (cp1252) không in được tiếng Việt / emoji -> không crash
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")
+    except Exception:
+        pass
+
 
 async def part2_guardrails():
     """Checkpoint 2: input + output guardrails."""

@@ -7,6 +7,7 @@ guardrail layers do not address (flooding / cost attacks).
 from __future__ import annotations
 
 from collections import defaultdict, deque
+import math
 import time
 
 from google.adk.plugins import base_plugin
@@ -37,13 +38,27 @@ class RateLimitPlugin(base_plugin.BasePlugin):
         now = time.time()
         window = self.user_windows[user_id]
 
-        # TODO: Implement sliding window:
-        # 1. Pop timestamps older than (now - window_seconds) from the left
-        # 2. If len(window) >= max_requests:
-        #       wait = window_seconds - (now - window[0])
-        #       self.blocked_count += 1
-        #       return self._block_response(
-        #           f"Rate limit exceeded. Try again in {wait:.0f}s."
-        #       )
-        # 3. Else: append now, return None
-        raise NotImplementedError("Implement RateLimitPlugin.on_user_message_callback")
+        # 1. Bỏ các timestamp đã ra khỏi cửa sổ trượt
+        cutoff = now - self.window_seconds
+        while window and window[0] <= cutoff:
+            window.popleft()
+
+        # 2. Vượt hạn mức -> chặn, KHÔNG ghi timestamp (request bị chặn không
+        #    kéo dài thời gian khoá của người dùng)
+        if len(window) >= self.max_requests:
+            wait = max(1, math.ceil(self.window_seconds - (now - window[0])))
+            self.blocked_count += 1
+            return self._block_response(
+                f"Rate limit exceeded. Try again in {wait}s."
+            )
+
+        # 3. Chưa vượt -> ghi nhận và cho qua
+        window.append(now)
+        return None
+
+    def reset(self, user_id: str | None = None) -> None:
+        """Xoá lịch sử cửa sổ (một user hoặc tất cả) — dùng cho test."""
+        if user_id is None:
+            self.user_windows.clear()
+        else:
+            self.user_windows.pop(user_id, None)
